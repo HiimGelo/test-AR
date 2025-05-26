@@ -19,8 +19,20 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        background-color: rgba(0, 0, 0, 0.5);
+        background-color: rgba(0, 0, 0, 0.7);
         z-index: 2;
+      }
+      #ar-button button {
+        background-color: #007bff;
+        color: white;
+        padding: 1em 2em;
+        font-size: 1.2em;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+      #ar-button button:hover {
+        background-color: #0056b3;
       }
     </style>
   </head>
@@ -56,11 +68,18 @@
         renderer.xr.enabled = true;
         document.body.appendChild(renderer.domElement);
 
-        const arButton = ARButton.createButton(renderer, {
-          requiredFeatures: ['hit-test']
-        });
-        document.getElementById('ar-button').appendChild(arButton);
-        document.getElementById('ar-button').style.display = 'block';
+        const arBtn = ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] });
+        arBtn.classList.add('ar-start-btn');
+        arBtn.style.position = 'static';
+        arBtn.style.backgroundColor = '#007bff';
+        arBtn.style.color = 'white';
+        arBtn.style.padding = '1em 2em';
+        arBtn.style.fontSize = '1.2em';
+        arBtn.style.border = 'none';
+        arBtn.style.borderRadius = '8px';
+        arBtn.style.cursor = 'pointer';
+
+        document.getElementById('ar-button').appendChild(arBtn);
 
         const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
         scene.add(light);
@@ -162,9 +181,8 @@
               const textMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
               const textMesh = new THREE.Mesh(textGeo, textMat);
               textMesh.position.copy(p2.clone().add(new THREE.Vector3(0, 0.03, 0)));
-              textMesh.lookAt(camera.position);
-              scene.add(textMesh);
               labels.push(textMesh);
+              scene.add(textMesh);
             }
           }
 
@@ -218,6 +236,10 @@
               } else {
                 reticle.visible = false;
               }
+            }
+
+            for (const label of labels) {
+              label.lookAt(camera.position);
             }
           }
 
