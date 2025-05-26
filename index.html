@@ -10,48 +10,16 @@
         overflow: hidden;
         font-family: sans-serif;
       }
-      #info {
-        position: absolute;
-        top: 10px;
-        left: 10px;
-        color: white;
-        background: rgba(0, 0, 0, 0.5);
-        padding: 8px;
-        border-radius: 4px;
-        z-index: 1;
-      }
-      #ui {
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        z-index: 2;
-      }
-      .btn {
-        background: rgba(0, 0, 0, 0.6);
-        color: white;
-        border: none;
-        margin: 4px;
-        padding: 8px;
-        border-radius: 4px;
-        font-size: 16px;
-        cursor: pointer;
-      }
     </style>
   </head>
   <body>
-    <div id="info">Tap on surfaces to measure distances</div>
-    <div id="ui">
-      <button id="undoBtn" class="btn">↶ Undo</button>
-      <button id="clearBtn" class="btn">✕ Clear</button>
-    </div>
-
     <script type="module">
       import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js';
       import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/webxr/ARButton.js';
 
       let camera, scene, renderer;
-      let reticle, centerDot;
-      const placedPoints = [], labels = [];
+      let reticle, centerDot, undoBtnMesh, clearBtnMesh;
+      const placedPoints = [], labels = [], undoStack = [];
       let hitTestSource = null;
       let hitTestSourceRequested = false;
       let lastPlacementTime = 0;
@@ -93,9 +61,47 @@
         centerDot.position.set(0, 0.001, 0);
         reticle.add(centerDot);
 
-        renderer.domElement.addEventListener('click', () => {
+        const buttonGeometry = new THREE.PlaneGeometry(0.1, 0.05);
+        const undoMat = new THREE.MeshBasicMaterial({ color: 0x3333ff });
+        const clearMat = new THREE.MeshBasicMaterial({ color: 0xff3333 });
+
+        undoBtnMesh = new THREE.Mesh(buttonGeometry, undoMat);
+        undoBtnMesh.position.set(-0.15, 0.1, -0.5);
+        undoBtnMesh.userData.action = 'undo';
+        scene.add(undoBtnMesh);
+
+        clearBtnMesh = new THREE.Mesh(buttonGeometry, clearMat);
+        clearBtnMesh.position.set(0.15, 0.1, -0.5);
+        clearBtnMesh.userData.action = 'clear';
+        scene.add(clearBtnMesh);
+
+        renderer.domElement.addEventListener('click', (event) => {
           const now = performance.now();
-          if (!reticle.visible || now - lastPlacementTime < 500) return;
+          if (now - lastPlacementTime < 500) return;
+
+          const mouse = new THREE.Vector2();
+          mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+          mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+          const raycaster = new THREE.Raycaster();
+          raycaster.setFromCamera(mouse, camera);
+          const intersects = raycaster.intersectObjects([undoBtnMesh, clearBtnMesh]);
+
+          if (intersects.length > 0) {
+            const action = intersects[0].object.userData.action;
+            if (action === 'undo' && placedPoints.length > 0) {
+              const point = placedPoints.pop();
+              scene.remove(point);
+              const label = labels.pop();
+              if (label) scene.remove(label);
+            } else if (action === 'clear') {
+              while (placedPoints.length > 0) scene.remove(placedPoints.pop());
+              while (labels.length > 0) scene.remove(labels.pop());
+            }
+            return;
+          }
+
+          if (!reticle.visible) return;
 
           const point = new THREE.Mesh(geometry, material);
           point.position.setFromMatrixPosition(reticle.matrix);
@@ -129,18 +135,6 @@
 
           lastPlacementTime = now;
         });
-
-        document.getElementById('undoBtn').onclick = () => {
-          if (placedPoints.length > 0) {
-            const point = placedPoints.pop();
-            scene.remove(point);
-          }
-        };
-
-        document.getElementById('clearBtn').onclick = () => {
-          while (placedPoints.length > 0) scene.remove(placedPoints.pop());
-          while (labels.length > 0) scene.remove(labels.pop());
-        };
 
         renderer.xr.getSession()?.addEventListener('end', () => {
           hitTestSourceRequested = false;
