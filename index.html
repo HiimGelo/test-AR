@@ -12,9 +12,14 @@
       }
       #ar-button {
         position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: rgba(0, 0, 0, 0.5);
         z-index: 2;
       }
     </style>
@@ -55,6 +60,7 @@
           requiredFeatures: ['hit-test']
         });
         document.getElementById('ar-button').appendChild(arButton);
+        document.getElementById('ar-button').style.display = 'block';
 
         const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
         scene.add(light);
@@ -73,7 +79,6 @@
         centerDot.position.set(0, 0.001, 0);
         reticle.add(centerDot);
 
-        // UI group in AR space
         uiGroup = new THREE.Group();
         uiGroup.position.set(0, 0, -0.5);
         camera.add(uiGroup);
@@ -125,6 +130,7 @@
               placedPoints.length = 0;
               labels.length = 0;
               lines.length = 0;
+              localStorage.removeItem('measurements');
             }
             return;
           }
@@ -162,6 +168,7 @@
             }
           }
 
+          localStorage.setItem('measurements', JSON.stringify(placedPoints.map(p => p.position)));
           lastPlacementTime = now;
         });
 
@@ -194,7 +201,6 @@
                 const tempMatrix = new THREE.Matrix4().fromArray(pose.transform.matrix);
                 const reticlePos = new THREE.Vector3().setFromMatrixPosition(tempMatrix);
 
-                // Check for nearby placed points
                 let locked = false;
                 for (const p of placedPoints) {
                   if (p.position.distanceTo(reticlePos) < 0.02) {
