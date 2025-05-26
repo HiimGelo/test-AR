@@ -10,56 +10,41 @@
         overflow: hidden;
         font-family: sans-serif;
       }
-      #ar-button {
+      #info {
         position: absolute;
-        top: 0;
-        left: 0;
-        width: 100vw;
-        height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background-color: rgba(0, 0, 0, 0.7);
-        z-index: 2;
-      }
-      #ar-button button {
-        background-color: #007bff;
+        top: 10px;
+        left: 10px;
         color: white;
-        padding: 1em 2em;
-        font-size: 1.2em;
-        border: none;
-        border-radius: 8px;
-        cursor: pointer;
-      }
-      #ar-button button:hover {
-        background-color: #0056b3;
+        background: rgba(0, 0, 0, 0.5);
+        padding: 8px;
+        border-radius: 4px;
+        z-index: 1;
       }
     </style>
   </head>
   <body>
-    <div id="ar-button"></div>
+    <div id="info">Tap on surfaces to measure distances</div>
+
     <script type="module">
       import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js';
       import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/webxr/ARButton.js';
-      import { FontLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/loaders/FontLoader.js';
-      import { TextGeometry } from 'https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/geometries/TextGeometry.js';
 
       let camera, scene, renderer;
-      let reticle, centerDot, undoBtnMesh, clearBtnMesh, uiGroup;
-      const placedPoints = [], labels = [], lines = [];
+      let reticle;
+      const placedPoints = [];
+
       let hitTestSource = null;
       let hitTestSourceRequested = false;
-      let lastPlacementTime = 0;
-      let loadedFont = null;
 
       const geometry = new THREE.SphereGeometry(0.01, 16, 16);
-      const material = new THREE.MeshBasicMaterial({ color: 0x00cc00 });
+      const material = new THREE.MeshBasicMaterial({ color: 0x0000CC00 });
 
       init();
       animate();
 
       function init() {
         scene = new THREE.Scene();
+
         camera = new THREE.PerspectiveCamera();
 
         renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -68,131 +53,43 @@
         renderer.xr.enabled = true;
         document.body.appendChild(renderer.domElement);
 
-        const arBtn = ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] });
-        arBtn.classList.add('ar-start-btn');
-        arBtn.style.position = 'static';
-        arBtn.style.backgroundColor = '#007bff';
-        arBtn.style.color = 'white';
-        arBtn.style.padding = '1em 2em';
-        arBtn.style.fontSize = '1.2em';
-        arBtn.style.border = 'none';
-        arBtn.style.borderRadius = '8px';
-        arBtn.style.cursor = 'pointer';
+        document.body.appendChild(
+          ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] })
+        );
 
-        document.getElementById('ar-button').appendChild(arBtn);
-
+        // Light
         const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
         scene.add(light);
 
+        // Reticle
         const reticleGeometry = new THREE.RingGeometry(0.05, 0.06, 32).rotateX(-Math.PI / 2);
-        const reticleMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        const reticleMaterial = new THREE.MeshBasicMaterial({ color: 0x00FFFFFF });
         reticle = new THREE.Mesh(reticleGeometry, reticleMaterial);
         reticle.matrixAutoUpdate = false;
         reticle.visible = false;
         scene.add(reticle);
 
-        centerDot = new THREE.Mesh(
-          new THREE.SphereGeometry(0.005, 8, 8),
-          new THREE.MeshBasicMaterial({ color: 0xff0000 })
-        );
-        centerDot.position.set(0, 0.001, 0);
-        reticle.add(centerDot);
+        // Tap to place points
+        renderer.domElement.addEventListener('click', () => {
+          if (reticle.visible) {
+            const point = new THREE.Mesh(geometry, material);
+            point.position.setFromMatrixPosition(reticle.matrix);
+            scene.add(point);
+            placedPoints.push(point);
 
-        uiGroup = new THREE.Group();
-        uiGroup.position.set(0, 0, -0.5);
-        camera.add(uiGroup);
+            if (placedPoints.length >= 2) {
+              const p1 = placedPoints[placedPoints.length - 2].position;
+              const p2 = placedPoints[placedPoints.length - 1].position;
 
-        const buttonGeometry = new THREE.PlaneGeometry(0.1, 0.05);
-        const undoMat = new THREE.MeshBasicMaterial({ color: 0x3333ff });
-        const clearMat = new THREE.MeshBasicMaterial({ color: 0xff3333 });
+              const lineGeo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+              const lineMat = new THREE.LineBasicMaterial({ color: 0x00FFFFFF });
+              const line = new THREE.Line(lineGeo, lineMat);
+              scene.add(line);
 
-        undoBtnMesh = new THREE.Mesh(buttonGeometry, undoMat);
-        undoBtnMesh.position.set(-0.15, 0.1, 0);
-        undoBtnMesh.userData.action = 'undo';
-        uiGroup.add(undoBtnMesh);
-
-        clearBtnMesh = new THREE.Mesh(buttonGeometry, clearMat);
-        clearBtnMesh.position.set(0.15, 0.1, 0);
-        clearBtnMesh.userData.action = 'clear';
-        uiGroup.add(clearBtnMesh);
-
-        const fontLoader = new FontLoader();
-        fontLoader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', (font) => {
-          loadedFont = font;
-        });
-
-        renderer.domElement.addEventListener('click', (event) => {
-          const now = performance.now();
-          if (now - lastPlacementTime < 500) return;
-
-          const mouse = new THREE.Vector2();
-          mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-          mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
-          const raycaster = new THREE.Raycaster();
-          raycaster.setFromCamera(mouse, camera);
-          const intersects = raycaster.intersectObjects([undoBtnMesh, clearBtnMesh], true);
-
-          if (intersects.length > 0) {
-            const action = intersects[0].object.userData.action;
-            if (action === 'undo' && placedPoints.length > 0) {
-              const point = placedPoints.pop();
-              scene.remove(point);
-              const label = labels.pop();
-              if (label) scene.remove(label);
-              const line = lines.pop();
-              if (line) scene.remove(line);
-            } else if (action === 'clear') {
-              placedPoints.forEach(p => scene.remove(p));
-              labels.forEach(l => scene.remove(l));
-              lines.forEach(l => scene.remove(l));
-              placedPoints.length = 0;
-              labels.length = 0;
-              lines.length = 0;
-              localStorage.removeItem('measurements');
-            }
-            return;
-          }
-
-          if (!reticle.visible) return;
-
-          const point = new THREE.Mesh(geometry, material);
-          point.position.setFromMatrixPosition(reticle.matrix);
-          scene.add(point);
-          placedPoints.push(point);
-
-          if (placedPoints.length >= 2) {
-            const p1 = placedPoints[placedPoints.length - 2].position;
-            const p2 = placedPoints[placedPoints.length - 1].position;
-
-            const lineGeo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
-            const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff });
-            const line = new THREE.Line(lineGeo, lineMat);
-            scene.add(line);
-            lines.push(line);
-
-            const distance = p1.distanceTo(p2);
-            if (loadedFont) {
-              const textGeo = new TextGeometry(distance.toFixed(2) + 'm', {
-                font: loadedFont,
-                size: 0.02,
-                height: 0.001
-              });
-              const textMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
-              const textMesh = new THREE.Mesh(textGeo, textMat);
-              textMesh.position.copy(p2.clone().add(new THREE.Vector3(0, 0.03, 0)));
-              labels.push(textMesh);
-              scene.add(textMesh);
+              const distance = p1.distanceTo(p2);
+              console.log(Distance: ${distance.toFixed(2)} meters);
             }
           }
-
-          localStorage.setItem('measurements', JSON.stringify(placedPoints.map(p => p.position)));
-          lastPlacementTime = now;
-        });
-
-        renderer.xr.getSession()?.addEventListener('end', () => {
-          hitTestSourceRequested = false;
-          hitTestSource = null;
         });
       }
 
@@ -216,30 +113,10 @@
               if (hitTestResults.length > 0) {
                 const hit = hitTestResults[0];
                 const pose = hit.getPose(referenceSpace);
-                const tempMatrix = new THREE.Matrix4().fromArray(pose.transform.matrix);
-                const reticlePos = new THREE.Vector3().setFromMatrixPosition(tempMatrix);
-
-                let locked = false;
-                for (const p of placedPoints) {
-                  if (p.position.distanceTo(reticlePos) < 0.02) {
-                    reticle.matrix.identity().setPosition(p.position);
-                    locked = true;
-                    break;
-                  }
-                }
-
-                if (!locked) {
-                  reticle.matrix.fromArray(pose.transform.matrix);
-                }
 
                 reticle.visible = true;
-              } else {
-                reticle.visible = false;
+                reticle.matrix.fromArray(pose.transform.matrix);
               }
-            }
-
-            for (const label of labels) {
-              label.lookAt(camera.position);
             }
           }
 
