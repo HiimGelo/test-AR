@@ -10,9 +10,16 @@
         overflow: hidden;
         font-family: sans-serif;
       }
+      #ar-button {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        z-index: 2;
+      }
     </style>
   </head>
   <body>
+    <div id="ar-button"></div>
     <script type="module">
       import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js';
       import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/webxr/ARButton.js';
@@ -43,9 +50,10 @@
         renderer.xr.enabled = true;
         document.body.appendChild(renderer.domElement);
 
-        document.body.appendChild(ARButton.createButton(renderer, {
+        const arButton = ARButton.createButton(renderer, {
           requiredFeatures: ['hit-test']
-        }));
+        });
+        document.getElementById('ar-button').appendChild(arButton);
 
         const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
         scene.add(light);
