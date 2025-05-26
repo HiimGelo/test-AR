@@ -16,13 +16,16 @@
     <script type="module">
       import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js';
       import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/webxr/ARButton.js';
+      import { FontLoader } from 'https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/loaders/FontLoader.js';
+      import { TextGeometry } from 'https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/geometries/TextGeometry.js';
 
       let camera, scene, renderer;
-      let reticle, centerDot, undoBtnMesh, clearBtnMesh;
-      const placedPoints = [], labels = [], undoStack = [];
+      let reticle, centerDot, undoBtnMesh, clearBtnMesh, uiGroup;
+      const placedPoints = [], labels = [], lines = [];
       let hitTestSource = null;
       let hitTestSourceRequested = false;
       let lastPlacementTime = 0;
+      let loadedFont = null;
 
       const geometry = new THREE.SphereGeometry(0.01, 16, 16);
       const material = new THREE.MeshBasicMaterial({ color: 0x00cc00 });
@@ -61,19 +64,30 @@
         centerDot.position.set(0, 0.001, 0);
         reticle.add(centerDot);
 
+        // UI group in AR space
+        uiGroup = new THREE.Group();
+        uiGroup.position.set(0, 0, -0.5);
+        camera.add(uiGroup);
+        scene.add(camera);
+
         const buttonGeometry = new THREE.PlaneGeometry(0.1, 0.05);
         const undoMat = new THREE.MeshBasicMaterial({ color: 0x3333ff });
         const clearMat = new THREE.MeshBasicMaterial({ color: 0xff3333 });
 
         undoBtnMesh = new THREE.Mesh(buttonGeometry, undoMat);
-        undoBtnMesh.position.set(-0.15, 0.1, -0.5);
+        undoBtnMesh.position.set(-0.15, 0.1, 0);
         undoBtnMesh.userData.action = 'undo';
-        scene.add(undoBtnMesh);
+        uiGroup.add(undoBtnMesh);
 
         clearBtnMesh = new THREE.Mesh(buttonGeometry, clearMat);
-        clearBtnMesh.position.set(0.15, 0.1, -0.5);
+        clearBtnMesh.position.set(0.15, 0.1, 0);
         clearBtnMesh.userData.action = 'clear';
-        scene.add(clearBtnMesh);
+        uiGroup.add(clearBtnMesh);
+
+        const fontLoader = new FontLoader();
+        fontLoader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', (font) => {
+          loadedFont = font;
+        });
 
         renderer.domElement.addEventListener('click', (event) => {
           const now = performance.now();
@@ -85,7 +99,7 @@
 
           const raycaster = new THREE.Raycaster();
           raycaster.setFromCamera(mouse, camera);
-          const intersects = raycaster.intersectObjects([undoBtnMesh, clearBtnMesh]);
+          const intersects = raycaster.intersectObjects([undoBtnMesh, clearBtnMesh], true);
 
           if (intersects.length > 0) {
             const action = intersects[0].object.userData.action;
@@ -94,9 +108,15 @@
               scene.remove(point);
               const label = labels.pop();
               if (label) scene.remove(label);
+              const line = lines.pop();
+              if (line) scene.remove(line);
             } else if (action === 'clear') {
-              while (placedPoints.length > 0) scene.remove(placedPoints.pop());
-              while (labels.length > 0) scene.remove(labels.pop());
+              placedPoints.forEach(p => scene.remove(p));
+              labels.forEach(l => scene.remove(l));
+              lines.forEach(l => scene.remove(l));
+              placedPoints.length = 0;
+              labels.length = 0;
+              lines.length = 0;
             }
             return;
           }
@@ -116,21 +136,22 @@
             const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff });
             const line = new THREE.Line(lineGeo, lineMat);
             scene.add(line);
+            lines.push(line);
 
             const distance = p1.distanceTo(p2);
-            const loader = new THREE.FontLoader();
-            loader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', (font) => {
-              const textGeo = new THREE.TextGeometry(distance.toFixed(2) + 'm', {
-                font: font,
+            if (loadedFont) {
+              const textGeo = new TextGeometry(distance.toFixed(2) + 'm', {
+                font: loadedFont,
                 size: 0.02,
                 height: 0.001
               });
               const textMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
               const textMesh = new THREE.Mesh(textGeo, textMat);
               textMesh.position.copy(p2.clone().add(new THREE.Vector3(0, 0.03, 0)));
+              textMesh.lookAt(camera.position);
               scene.add(textMesh);
               labels.push(textMesh);
-            });
+            }
           }
 
           lastPlacementTime = now;
@@ -162,16 +183,24 @@
               if (hitTestResults.length > 0) {
                 const hit = hitTestResults[0];
                 const pose = hit.getPose(referenceSpace);
-                reticle.visible = true;
-                reticle.matrix.fromArray(pose.transform.matrix);
+                const tempMatrix = new THREE.Matrix4().fromArray(pose.transform.matrix);
+                const reticlePos = new THREE.Vector3().setFromMatrixPosition(tempMatrix);
 
-                const reticlePos = new THREE.Vector3().setFromMatrixPosition(reticle.matrix);
+                // Check for nearby placed points
+                let locked = false;
                 for (const p of placedPoints) {
                   if (p.position.distanceTo(reticlePos) < 0.02) {
-                    reticle.position.copy(p.position);
+                    reticle.matrix.identity().setPosition(p.position);
+                    locked = true;
                     break;
                   }
                 }
+
+                if (!locked) {
+                  reticle.matrix.fromArray(pose.transform.matrix);
+                }
+
+                reticle.visible = true;
               } else {
                 reticle.visible = false;
               }
