@@ -20,10 +20,31 @@
         border-radius: 4px;
         z-index: 1;
       }
+      .btn {
+        position: absolute;
+        top: 10px;
+        width: 40px;
+        height: 40px;
+        font-size: 20px;
+        border: none;
+        border-radius: 50%;
+        background: rgba(0, 0, 0, 0.5);
+        color: white;
+        cursor: pointer;
+        z-index: 2;
+      }
+      #undoBtn {
+        right: 60px;
+      }
+      #clearBtn {
+        right: 10px;
+      }
     </style>
   </head>
   <body>
     <div id="info">Tap on surfaces to measure distances</div>
+    <button class="btn" id="undoBtn">&#x21A9;</button>
+    <button class="btn" id="clearBtn">&times;</button>
 
     <script type="module">
       import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js';
@@ -32,12 +53,14 @@
       let camera, scene, renderer;
       let reticle;
       const placedPoints = [];
+      const lines = [];
+      const labels = [];
 
       let hitTestSource = null;
       let hitTestSourceRequested = false;
 
       const geometry = new THREE.SphereGeometry(0.01, 16, 16);
-      const material = new THREE.MeshBasicMaterial({ color: 0x0000CC00 });
+      const material = new THREE.MeshBasicMaterial({ color: 0x0000cc });
 
       init();
       animate();
@@ -57,19 +80,16 @@
           ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] })
         );
 
-        // Light
         const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
         scene.add(light);
 
-        // Reticle
         const reticleGeometry = new THREE.RingGeometry(0.05, 0.06, 32).rotateX(-Math.PI / 2);
-        const reticleMaterial = new THREE.MeshBasicMaterial({ color: 0x00FFFFFF });
+        const reticleMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
         reticle = new THREE.Mesh(reticleGeometry, reticleMaterial);
         reticle.matrixAutoUpdate = false;
         reticle.visible = false;
         scene.add(reticle);
 
-        // Tap to place points
         renderer.domElement.addEventListener('click', () => {
           if (reticle.visible) {
             const point = new THREE.Mesh(geometry, material);
@@ -82,14 +102,53 @@
               const p2 = placedPoints[placedPoints.length - 1].position;
 
               const lineGeo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
-              const lineMat = new THREE.LineBasicMaterial({ color: 0x00FFFFFF });
+              const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff });
               const line = new THREE.Line(lineGeo, lineMat);
               scene.add(line);
+              lines.push(line);
 
               const distance = p1.distanceTo(p2);
-              console.log(`Distance: ${distance.toFixed(2)} meters`);
+
+              const loader = new THREE.FontLoader();
+              loader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', (font) => {
+                const textGeo = new THREE.TextGeometry(distance.toFixed(2) + 'm', {
+                  font: font,
+                  size: 0.025,
+                  height: 0.001,
+                });
+                const textMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+                const text = new THREE.Mesh(textGeo, textMat);
+                text.position.copy(p1.clone().add(p2).multiplyScalar(0.5));
+                text.lookAt(camera.position);
+                scene.add(text);
+                labels.push(text);
+              });
             }
           }
+        });
+
+        document.getElementById('undoBtn').addEventListener('click', () => {
+          if (placedPoints.length > 0) {
+            const point = placedPoints.pop();
+            scene.remove(point);
+          }
+          if (lines.length > 0) {
+            const line = lines.pop();
+            scene.remove(line);
+          }
+          if (labels.length > 0) {
+            const label = labels.pop();
+            scene.remove(label);
+          }
+        });
+
+        document.getElementById('clearBtn').addEventListener('click', () => {
+          placedPoints.forEach(p => scene.remove(p));
+          lines.forEach(l => scene.remove(l));
+          labels.forEach(lb => scene.remove(lb));
+          placedPoints.length = 0;
+          lines.length = 0;
+          labels.length = 0;
         });
       }
 
@@ -113,7 +172,6 @@
               if (hitTestResults.length > 0) {
                 const hit = hitTestResults[0];
                 const pose = hit.getPose(referenceSpace);
-
                 reticle.visible = true;
                 reticle.matrix.fromArray(pose.transform.matrix);
               }
