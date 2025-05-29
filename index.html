@@ -13,16 +13,18 @@
         }
         /* Basic info display */
         #info {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            color: white;
-            background: rgba(0, 0, 0, 0.5);
-            padding: 8px;
-            border-radius: 8px; /* Rounded corners */
-            z-index: 10; /* Ensure it's above other elements */
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: white;
+        background: rgba(0, 0, 0, 0.5);
+        padding: 8px;
+        border-radius: 8px;
+        z-index: 10;
+        text-align: center;
         }
-        /* Container for AR UI buttons */
+        /* Container for AR UI buttons (we might not need much styling here now) */
         #ar-ui-overlay {
             position: absolute;
             top: 0;
@@ -32,32 +34,30 @@
             pointer-events: none; /* Allows clicks to pass through to the AR scene by default */
             z-index: 5; /* Below info, above AR content */
         }
-        /* Specific styling for buttons to make them interactive */
-        #ar-ui-overlay button {
-            pointer-events: auto; /* Re-enable pointer events for buttons */
-        }
+
+        button {
+        background-color: rgb(0, 0, 0) !important; /* Example blue with 0.5 opacity */
+        color: white !important;
+        border: none !important;
+        padding: 12px 6px !important;
+        border-radius: 8px !important;
+        font-size: 13px !important;
+        cursor: pointer !important;
+        /* Remove the opacity here if you only want background opacity */
+    }
+
+    button:hover {
+        opacity: 0.7 !important; /* Adjust hover opacity if needed */
+    }
+
+
     </style>
 </head>
 <body>
     <div id="info" class="text-sm md:text-base">Tap on surfaces to place points and measure distances</div>
 
     <div id="ar-ui-overlay" class="hidden">
-        <div class="absolute bottom-4 left-1/2 -translate-x-1/2 flex space-x-4">
-            <button id="undoButton" class="p-3 bg-gray-800 hover:bg-gray-700 text-white rounded-full shadow-lg transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
-                <img src="undo.png" alt="Undo" width="24" height="24" />
-            </button>
-            <button id="clearButton" class="p-3 bg-gray-800 hover:bg-gray-700 text-white rounded-full shadow-lg transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
-                <img src="clear.png" alt="Undo" width="24" height="24" />
-            </button>
-            <button id="triggerClickButton" class="p-3 bg-blue-800 hover:bg-blue-700 text-white rounded-full shadow-lg transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-target">
-                    <circle cx="12" cy="12" r="10"/>
-                    <circle cx="12" cy="12" r="6"/>
-                    <circle cx="12" cy="12" r="2"/>
-                </svg>
-            </button>
         </div>
-    </div>
 
     <script type="module">
         import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js';
@@ -78,6 +78,8 @@
 
         // 3D Button variables
         let arClickButton;
+        let arUndoButton;
+        let arClearButton;
         const raycaster = new Raycaster();
         const pointer = new Vector2();
 
@@ -96,20 +98,17 @@
 
             const arUiOverlay = document.getElementById('ar-ui-overlay');
             renderer.xr.addEventListener('sessionstart', () => {
-                arUiOverlay.classList.remove('hidden');
-                // When AR session starts, make the HTML trigger button invisible
-                document.getElementById('triggerClickButton').classList.add('hidden');
-                // Add the 3D AR button to the scene
-                initARButton();
+                arUiOverlay.classList.add('hidden'); // Hide the HTML overlay
+                initARButtons(); // Initialize all AR buttons
             });
             renderer.xr.addEventListener('sessionend', () => {
-                arUiOverlay.classList.add('hidden');
-                // When AR session ends, make the HTML trigger button visible again
-                document.getElementById('triggerClickButton').classList.remove('hidden');
-                if (arClickButton) {
-                    scene.remove(arClickButton);
-                    arClickButton = null;
-                }
+                arUiOverlay.classList.remove('hidden'); // Show it back if needed
+                if (arClickButton) scene.remove(arClickButton);
+                if (arUndoButton) scene.remove(arUndoButton);
+                if (arClearButton) scene.remove(arClearButton);
+                arClickButton = null;
+                arUndoButton = null;
+                arClearButton = null;
                 clearAllMeasurements();
             });
 
@@ -133,42 +132,52 @@
             centerDot.position.set(0, 0, 0);
             reticle.add(centerDot);
 
-            document.getElementById('undoButton').addEventListener('click', undoLastMeasurement);
-            document.getElementById('clearButton').addEventListener('click', clearAllMeasurements);
-
             window.addEventListener('resize', onWindowResize);
 
             // Event listener for "tapping" in the AR scene
             renderer.domElement.addEventListener('pointerdown', onPointerDownAR);
         }
 
-        function initARButton() {
-            const buttonGeometry = new THREE.PlaneGeometry(0.15, 0.05);
+        function createARButton(text, icon, callback, position) {
+            const buttonGeometry = new THREE.PlaneGeometry(0.08, 0.08);
             const buttonCanvas = document.createElement('canvas');
             const context = buttonCanvas.getContext('2d');
-            const fontSize = 40;
-            const padding = 10;
-            const text = 'Place';
+            const size = 64;
+            buttonCanvas.width = size;
+            buttonCanvas.height = size;
 
-            context.font = `${fontSize}px Arial`;
-            const textMetrics = context.measureText(text);
-            buttonCanvas.width = textMetrics.width + padding * 2;
-            buttonCanvas.height = fontSize + padding * 2;
+            // Draw a circle for the background
+            context.beginPath();
+            context.arc(size / 2, size / 2, size / 2, 0, 2 * Math.PI);
+            context.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            context.fill();
 
-            context.fillStyle = '#4a90e2'; // Blue background
-            context.fillRect(0, 0, buttonCanvas.width, buttonCanvas.height);
-            context.font = `${fontSize}px Arial`;
+            // Draw the text/icon
             context.fillStyle = 'white';
+            context.font = 'bold 48px sans-serif';
             context.textAlign = 'center';
             context.textBaseline = 'middle';
-            context.fillText(text, buttonCanvas.width / 2, buttonCanvas.height / 2);
+            context.fillText(icon || text, size / 2, size / 2);
 
             const buttonTexture = new THREE.CanvasTexture(buttonCanvas);
             const buttonMaterial = new THREE.MeshBasicMaterial({ map: buttonTexture, transparent: true });
-            arClickButton = new THREE.Mesh(buttonGeometry, buttonMaterial);
-            arClickButton.position.set(0, -0.1, -0.3); // Position in front of the user
-            arClickButton.lookAt(camera.position); // Face the camera
-            scene.add(arClickButton);
+            const button = new THREE.Mesh(buttonGeometry, buttonMaterial);
+            button.position.copy(position);
+            button.lookAt(camera.position);
+            button.userData.callback = callback;
+            scene.add(button);
+            return button;
+        }
+
+        function initARButtons() {
+            // Place Button
+            arClickButton = createARButton('Place', '+', placePoint, new THREE.Vector3(0, -0.15, -0.5));
+
+            // Undo Button (using text 'U' for now, replace with icon later if needed)
+            arUndoButton = createARButton('Undo', 'U', undoLastMeasurement, new THREE.Vector3(-0.2, -0.15, -0.5));
+
+            // Clear Button (using text 'C' for now, replace with icon later if needed)
+            arClearButton = createARButton('Clear', 'C', clearAllMeasurements, new THREE.Vector3(0.2, -0.15, -0.5));
         }
 
         function onPointerDownAR(event) {
@@ -180,11 +189,14 @@
 
             raycaster.setFromCamera(pointer, camera);
 
-            const intersects = raycaster.intersectObjects([arClickButton]);
+            const interactiveObjects = [arClickButton, arUndoButton, arClearButton].filter(obj => obj);
+            const intersects = raycaster.intersectObjects(interactiveObjects);
 
             if (intersects.length > 0) {
-                // The 3D button was "tapped"
-                placePoint();
+                const intersectedObject = intersects[0].object;
+                if (intersectedObject && intersectedObject.userData.callback) {
+                    intersectedObject.userData.callback();
+                }
             }
         }
 
@@ -325,14 +337,30 @@
 
                             reticle.visible = true;
                             reticle.matrix.fromArray(pose.transform.matrix);
-                            // Make the 3D button face the user
-                            if (arClickButton) {
-                                arClickButton.lookAt(camera.position);
-                            }
                         } else {
                             reticle.visible = false;
                         }
                     }
+
+                    // Keep the AR buttons facing the camera and in a fixed position relative to it
+                    if (arClickButton) arClickButton.lookAt(camera.position);
+                    if (arUndoButton) arUndoButton.lookAt(camera.position);
+                    if (arClearButton) arClearButton.lookAt(camera.position);
+
+                    // Optionally, you can update their positions here if you want them to be truly fixed
+                    // in the camera's view. For example, to keep them at a certain offset:
+                    const cameraWorldPosition = new THREE.Vector3();
+                    camera.getWorldPosition(cameraWorldPosition);
+                    const offsetForward = new THREE.Vector3(0, 0, -0.5).applyQuaternion(camera.quaternion);
+                    const offsetUp = new THREE.Vector3(0, -0.15, 0).applyQuaternion(camera.quaternion);
+                    const offsetSidePlace = new THREE.Vector3(0, 0, 0).applyQuaternion(camera.quaternion);
+                    const offsetSideUndo = new THREE.Vector3(-0.2, 0, 0).applyQuaternion(camera.quaternion);
+                    const offsetSideClear = new THREE.Vector3(0.2, 0, 0).applyQuaternion(camera.quaternion);
+
+                    if (arClickButton) arClickButton.position.copy(cameraWorldPosition).add(offsetForward).add(offsetUp).add(offsetSidePlace);
+                    if (arUndoButton) arUndoButton.position.copy(cameraWorldPosition).add(offsetForward).add(offsetUp).add(offsetSideUndo);
+                    if (arClearButton) arClearButton.position.copy(cameraWorldPosition).add(offsetForward).add(offsetUp).add(offsetSideClear);
+
                 }
                 renderer.render(scene, camera);
             });
