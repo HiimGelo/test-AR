@@ -140,7 +140,7 @@
             renderer.domElement.addEventListener('pointerdown', onPointerDownAR);
         }
 
-        function createARButton(text, icon, callback, position, size = 0.05) {
+        function createARButton(text, iconSrc, callback, position, size = 0.05) {
             const buttonGeometry = new THREE.PlaneGeometry(size, size);
             const buttonCanvas = document.createElement('canvas');
             const context = buttonCanvas.getContext('2d');
@@ -154,20 +154,42 @@
             context.fillStyle = 'rgba(0, 0, 0, 0.7)';
             context.fill();
 
-            // Draw the text/icon
-            context.fillStyle = 'white';
-            context.font = 'bold 48px sans-serif';
-            context.textAlign = 'center';
-            context.textBaseline = 'middle';
-            context.fillText(icon || text, canvasSize / 2, canvasSize / 2);
-
             const buttonTexture = new THREE.CanvasTexture(buttonCanvas);
             const buttonMaterial = new THREE.MeshBasicMaterial({ map: buttonTexture, transparent: true });
             const button = new THREE.Mesh(buttonGeometry, buttonMaterial);
             button.position.copy(position);
-            button.lookAt(camera.position);
+            // Removed button.lookAt(camera.position); from here
             button.userData.callback = callback;
             scene.add(button);
+
+            if (iconSrc && iconSrc.endsWith('.png')) {
+                const img = new Image();
+                img.onload = () => {
+                    const aspectRatio = img.width / img.height;
+                    const targetSize = canvasSize * 0.6; // Adjust icon size within the circle
+                    let width = targetSize;
+                    let height = targetSize;
+
+                    if (aspectRatio > 1) {
+                        height = targetSize / aspectRatio;
+                    } else {
+                        width = targetSize * aspectRatio;
+                    }
+
+                    context.drawImage(img, (canvasSize - width) / 2, (canvasSize - height) / 2, width, height);
+                    buttonTexture.needsUpdate = true; // Update the texture after loading the image
+                };
+                img.src = iconSrc;
+            } else {
+                // If it's not a .png, treat it as text
+                context.fillStyle = 'white';
+                context.font = 'bold 48px sans-serif';
+                context.textAlign = 'center';
+                context.textBaseline = 'middle';
+                context.fillText(iconSrc || text, canvasSize / 2, canvasSize / 2);
+                buttonTexture.needsUpdate = true;
+            }
+
             return button;
         }
 
@@ -176,13 +198,13 @@
             const buttonZOffset = -0.5; // Adjust distance from camera
 
             // Place Button
-            arClickButton = createARButton('Place', '+', placePoint, new THREE.Vector3(0, -0.15, buttonZOffset), 0.06);
+            arClickButton = createARButton('Place', 'place.png', placePoint, new THREE.Vector3(0, -0.15, buttonZOffset), 0.06);
 
             // Undo Button
-            arUndoButton = createARButton('Undo', 'u', undoLastMeasurement, new THREE.Vector3(-buttonHorizontalSpacing, -0.15, buttonZOffset), buttonScale);
+            arUndoButton = createARButton('Undo', 'undo.png', undoLastMeasurement, new THREE.Vector3(-buttonHorizontalSpacing, -0.15, buttonZOffset), buttonScale);
 
             // Clear Button
-            arClearButton = createARButton('Clear', 'C', clearAllMeasurements, new THREE.Vector3(buttonHorizontalSpacing, -0.15, buttonZOffset), buttonScale);
+            arClearButton = createARButton('Clear', 'clear.png', clearAllMeasurements, new THREE.Vector3(buttonHorizontalSpacing, -0.15, buttonZOffset), buttonScale);
         }
 
         function onPointerDownAR(event) {
@@ -320,49 +342,73 @@
         }
 
         function animate() {
-    renderer.setAnimationLoop((timestamp, frame) => {
-        if (frame) {
-            const referenceSpace = renderer.xr.getReferenceSpace();
-            const session = renderer.xr.getSession();
+            renderer.setAnimationLoop((timestamp, frame) => {
+                if (frame) {
+                    const referenceSpace = renderer.xr.getReferenceSpace();
+                    const session = renderer.xr.getSession();
 
-            if (!hitTestSourceRequested) {
-                session.requestReferenceSpace('viewer').then((refSpace) => {
-                    session.requestHitTestSource({ space: refSpace }).then((source) => {
-                        hitTestSource = source;
+                    if (!hitTestSourceRequested) {
+                        session.requestReferenceSpace('viewer').then((refSpace) => {
+                            session.requestHitTestSource({ space: refSpace }).then((source) => {
+                                hitTestSource = source;
+                            });
+                        });
+                        hitTestSourceRequested = true;
+                    }
+
+                    if (hitTestSource) {
+                        const hitTestResults = frame.getHitTestResults(hitTestSource);
+                        if (hitTestResults.length > 0) {
+                            const hit = hitTestResults[0];
+                            const pose = hit.getPose(referenceSpace);
+
+                            reticle.visible = true;
+                            reticle.matrix.fromArray(pose.transform.matrix);
+                        } else {
+                            reticle.visible = false;
+                        }
+                    }
+
+                    const cameraWorldPosition = new THREE.Vector3();
+                    camera.getWorldPosition(cameraWorldPosition);
+                    const cameraQuaternion = camera.quaternion.clone(); // Get current camera rotation
+
+                    // Define local offsets relative to the camera's forward direction
+                    const localOffsetForward = new THREE.Vector3(0, 0, -0.5); // How far in front
+                    const localOffsetUp = new THREE.Vector3(0, -0.15, 0); // How far up/down from center
+                    const localOffsetPlaceX = new THREE.Vector3(0, 0, 0); // X offset for place button
+                    const localOffsetUndoX = new THREE.Vector3(-buttonHorizontalSpacing, 0, 0); // X offset for undo button
+                    const localOffsetClearX = new THREE.Vector3(buttonHorizontalSpacing, 0, 0); // X offset for clear button
+
+                    // Apply camera's current rotation to these local offsets
+                    localOffsetForward.applyQuaternion(cameraQuaternion);
+                    localOffsetUp.applyQuaternion(cameraQuaternion);
+                    localOffsetPlaceX.applyQuaternion(cameraQuaternion);
+                    localOffsetUndoX.applyQuaternion(cameraQuaternion);
+                    localOffsetClearX.applyQuaternion(cameraQuaternion);
+
+                    // Position and orient each button
+                    [
+                        { button: arClickButton, localXOffset: localOffsetPlaceX },
+                        { button: arUndoButton, localXOffset: localOffsetUndoX },
+                        { button: arClearButton, localXOffset: localOffsetClearX }
+                    ].forEach(({ button, localXOffset }) => {
+                        if (button) {
+                            // Set position
+                            button.position.copy(cameraWorldPosition)
+                                .add(localOffsetForward)
+                                .add(localOffsetUp)
+                                .add(localXOffset);
+
+                            // Set orientation directly to camera's orientation
+                            button.quaternion.copy(cameraQuaternion);
+                        }
                     });
-                });
-                hitTestSourceRequested = true;
-            }
 
-            if (hitTestSource) {
-                const hitTestResults = frame.getHitTestResults(hitTestSource);
-                if (hitTestResults.length > 0) {
-                    const hit = hitTestResults[0];
-                    const pose = hit.getPose(referenceSpace);
-
-                    reticle.visible = true;
-                    reticle.matrix.fromArray(pose.transform.matrix);
-                } else {
-                    reticle.visible = false;
                 }
-            }
-
-            // Keep the AR buttons in a fixed position relative to the camera
-            const cameraWorldPosition = new THREE.Vector3();
-            camera.getWorldPosition(cameraWorldPosition);
-            const offsetForward = new THREE.Vector3(0, 0, -0.5).applyQuaternion(camera.quaternion);
-            const offsetUp = new THREE.Vector3(0, -0.15, 0).applyQuaternion(camera.quaternion);
-
-            if (arClickButton) arClickButton.position.copy(cameraWorldPosition).add(offsetForward).add(offsetUp).add(new THREE.Vector3(0, 0, 0));
-            if (arUndoButton) arUndoButton.position.copy(cameraWorldPosition).add(offsetForward).add(offsetUp).add(new THREE.Vector3(-buttonHorizontalSpacing, 0, 0));
-            if (arClearButton) arClearButton.position.copy(cameraWorldPosition).add(offsetForward).add(offsetUp).add(new THREE.Vector3(buttonHorizontalSpacing, 0, 0));
-
-            // Removed the lookAt calls to stop rotation
-
+                renderer.render(scene, camera);
+            });
         }
-        renderer.render(scene, camera);
-    });
-}
     </script>
 </body>
 </html>
