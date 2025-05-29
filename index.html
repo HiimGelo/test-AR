@@ -83,6 +83,8 @@
         const raycaster = new Raycaster();
         const pointer = new Vector2();
 
+        const buttonHorizontalSpacing = 0.07; // Adjust this value to control horizontal spacing
+
         init();
         animate();
 
@@ -138,17 +140,17 @@
             renderer.domElement.addEventListener('pointerdown', onPointerDownAR);
         }
 
-        function createARButton(text, icon, callback, position) {
-            const buttonGeometry = new THREE.PlaneGeometry(0.08, 0.08);
+        function createARButton(text, icon, callback, position, size = 0.05) {
+            const buttonGeometry = new THREE.PlaneGeometry(size, size);
             const buttonCanvas = document.createElement('canvas');
             const context = buttonCanvas.getContext('2d');
-            const size = 64;
-            buttonCanvas.width = size;
-            buttonCanvas.height = size;
+            const canvasSize = 64;
+            buttonCanvas.width = canvasSize;
+            buttonCanvas.height = canvasSize;
 
             // Draw a circle for the background
             context.beginPath();
-            context.arc(size / 2, size / 2, size / 2, 0, 2 * Math.PI);
+            context.arc(canvasSize / 2, canvasSize / 2, canvasSize / 2, 0, 2 * Math.PI);
             context.fillStyle = 'rgba(0, 0, 0, 0.7)';
             context.fill();
 
@@ -157,7 +159,7 @@
             context.font = 'bold 48px sans-serif';
             context.textAlign = 'center';
             context.textBaseline = 'middle';
-            context.fillText(icon || text, size / 2, size / 2);
+            context.fillText(icon || text, canvasSize / 2, canvasSize / 2);
 
             const buttonTexture = new THREE.CanvasTexture(buttonCanvas);
             const buttonMaterial = new THREE.MeshBasicMaterial({ map: buttonTexture, transparent: true });
@@ -170,14 +172,17 @@
         }
 
         function initARButtons() {
+            const buttonScale = 0.04; // Adjust button size if needed
+            const buttonZOffset = -0.5; // Adjust distance from camera
+
             // Place Button
-            arClickButton = createARButton('Place', '+', placePoint, new THREE.Vector3(0, -0.15, -0.5));
+            arClickButton = createARButton('Place', '+', placePoint, new THREE.Vector3(0, -0.15, buttonZOffset), 0.06);
 
-            // Undo Button (using text 'U' for now, replace with icon later if needed)
-            arUndoButton = createARButton('Undo', '<-', undoLastMeasurement, new THREE.Vector3(-0.2, -0.15, -0.5));
+            // Undo Button
+            arUndoButton = createARButton('Undo', 'u', undoLastMeasurement, new THREE.Vector3(-buttonHorizontalSpacing, -0.15, buttonZOffset), buttonScale);
 
-            // Clear Button (using text 'C' for now, replace with icon later if needed)
-            arClearButton = createARButton('Clear', 'X', clearAllMeasurements, new THREE.Vector3(0.2, -0.15, -0.5));
+            // Clear Button
+            arClearButton = createARButton('Clear', 'C', clearAllMeasurements, new THREE.Vector3(buttonHorizontalSpacing, -0.15, buttonZOffset), buttonScale);
         }
 
         function onPointerDownAR(event) {
@@ -347,15 +352,14 @@
                     if (arUndoButton) arUndoButton.lookAt(camera.position);
                     if (arClearButton) arClearButton.lookAt(camera.position);
 
-                    // Optionally, you can update their positions here if you want them to be truly fixed
-                    // in the camera's view. For example, to keep them at a certain offset:
+                    // Update their positions using buttonHorizontalSpacing
                     const cameraWorldPosition = new THREE.Vector3();
                     camera.getWorldPosition(cameraWorldPosition);
                     const offsetForward = new THREE.Vector3(0, 0, -0.5).applyQuaternion(camera.quaternion);
                     const offsetUp = new THREE.Vector3(0, -0.15, 0).applyQuaternion(camera.quaternion);
                     const offsetSidePlace = new THREE.Vector3(0, 0, 0).applyQuaternion(camera.quaternion);
-                    const offsetSideUndo = new THREE.Vector3(-0.2, 0, 0).applyQuaternion(camera.quaternion);
-                    const offsetSideClear = new THREE.Vector3(0.2, 0, 0).applyQuaternion(camera.quaternion);
+                    const offsetSideUndo = new THREE.Vector3(-buttonHorizontalSpacing, 0, 0).applyQuaternion(camera.quaternion);
+                    const offsetSideClear = new THREE.Vector3(buttonHorizontalSpacing, 0, 0).applyQuaternion(camera.quaternion);
 
                     if (arClickButton) arClickButton.position.copy(cameraWorldPosition).add(offsetForward).add(offsetUp).add(offsetSidePlace);
                     if (arUndoButton) arUndoButton.position.copy(cameraWorldPosition).add(offsetForward).add(offsetUp).add(offsetSideUndo);
