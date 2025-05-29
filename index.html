@@ -1,44 +1,44 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
+<head>
     <meta charset="UTF-8" />
     <title>AR Measurement Tool</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-      body {
-        margin: 0;
-        overflow: hidden;
-        font-family: 'Inter', sans-serif; /* Using Inter font */
-      }
-      /* Basic info display */
-      #info {
-        position: absolute;
-        top: 10px;
-        left: 10px;
-        color: white;
-        background: rgba(0, 0, 0, 0.5);
-        padding: 8px;
-        border-radius: 8px; /* Rounded corners */
-        z-index: 10; /* Ensure it's above other elements */
-      }
-      /* Container for AR UI buttons */
-      #ar-ui-overlay {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        pointer-events: none; /* Allows clicks to pass through to the AR scene by default */
-        z-index: 5; /* Below info, above AR content */
-      }
-      /* Specific styling for buttons to make them interactive */
-      #ar-ui-overlay button {
-        pointer-events: auto; /* Re-enable pointer events for buttons */
-      }
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif; /* Using Inter font */
+        }
+        /* Basic info display */
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 8px;
+            border-radius: 8px; /* Rounded corners */
+            z-index: 10; /* Ensure it's above other elements */
+        }
+        /* Container for AR UI buttons */
+        #ar-ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Allows clicks to pass through to the AR scene by default */
+            z-index: 5; /* Below info, above AR content */
+        }
+        /* Specific styling for buttons to make them interactive */
+        #ar-ui-overlay button {
+            pointer-events: auto; /* Re-enable pointer events for buttons */
+        }
     </style>
-  </head>
-  <body>
+</head>
+<body>
     <div id="info" class="text-sm md:text-base">Tap on surfaces to place points and measure distances</div>
 
     <div id="ar-ui-overlay" class="hidden">
@@ -57,284 +57,301 @@
                     <path d="m6 6 12 12"/>
                 </svg>
             </button>
+            <button id="triggerClickButton" class="p-3 bg-blue-800 hover:bg-blue-700 text-white rounded-full shadow-lg transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-target">
+                    <circle cx="12" cy="12" r="10"/>
+                    <circle cx="12" cy="12" r="6"/>
+                    <circle cx="12" cy="12" r="2"/>
+                </svg>
+            </button>
         </div>
     </div>
 
     <script type="module">
-      import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js';
-      import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/webxr/ARButton.js';
+        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js';
+        import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/webxr/ARButton.js';
 
-      let camera, scene, renderer;
-      let reticle;
-      // Arrays to store AR elements for management
-      const placedPoints = [];
-      const placedLines = [];
-      const distanceLabels = [];
+        let camera, scene, renderer;
+        let reticle;
+        // Arrays to store AR elements for management
+        const placedPoints = [];
+        const placedLines = [];
+        const distanceLabels = [];
 
-      let hitTestSource = null;
-      let hitTestSourceRequested = false;
+        let hitTestSource = null;
+        let hitTestSourceRequested = false;
 
-      // Geometry and material for the placed points
-      const pointGeometry = new THREE.SphereGeometry(0.01, 16, 16);
-      const pointMaterial = new THREE.MeshBasicMaterial({ color: 0x00CC00 }); // Green color for points
+        // Geometry and material for the placed points
+        const pointGeometry = new THREE.SphereGeometry(0.01, 16, 16);
+        const pointMaterial = new THREE.MeshBasicMaterial({ color: 0x00CC00 }); // Green color for points
 
-      // Initialize the AR scene
-      init();
-      // Start the animation loop
-      animate();
+        // Initialize the AR scene
+        init();
+        // Start the animation loop
+        animate();
 
-      /**
-       * Initializes the Three.js scene, camera, renderer, and AR components.
-       */
-      function init() {
-        scene = new THREE.Scene();
+        /**
+         * Initializes the Three.js scene, camera, renderer, and AR components.
+         */
+        function init() {
+            scene = new THREE.Scene();
 
-        // Create a perspective camera
-        camera = new THREE.PerspectiveCamera();
+            // Create a perspective camera
+            camera = new THREE.PerspectiveCamera();
 
-        // Initialize WebGLRenderer with antialiasing and alpha for transparency
-        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        renderer.setSize(window.innerWidth, window.innerHeight); // Set renderer size to full window
-        renderer.setPixelRatio(window.devicePixelRatio); // Adjust pixel ratio for device
-        renderer.xr.enabled = true; // Enable WebXR
-        document.body.appendChild(renderer.domElement); // Add renderer to the DOM
+            // Initialize WebGLRenderer with antialiasing and alpha for transparency
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight); // Set renderer size to full window
+            renderer.setPixelRatio(window.devicePixelRatio); // Adjust pixel ratio for device
+            renderer.xr.enabled = true; // Enable WebXR
+            document.body.appendChild(renderer.domElement); // Add renderer to the DOM
 
-        // Get reference to the AR UI overlay
-        const arUiOverlay = document.getElementById('ar-ui-overlay');
+            // Get reference to the AR UI overlay
+            const arUiOverlay = document.getElementById('ar-ui-overlay');
 
-        // Event listener for AR session start
-        renderer.xr.addEventListener('sessionstart', () => {
-            arUiOverlay.classList.remove('hidden'); // Show AR UI overlay
-        });
+            // Event listener for AR session start
+            renderer.xr.addEventListener('sessionstart', () => {
+                arUiOverlay.classList.remove('hidden'); // Show AR UI overlay
+            });
 
-        // Event listener for AR session end
-        renderer.xr.addEventListener('sessionend', () => {
-            arUiOverlay.classList.add('hidden'); // Hide AR UI overlay
-            clearAllMeasurements(); // Clear measurements when AR session ends
-        });
+            // Event listener for AR session end
+            renderer.xr.addEventListener('sessionend', () => {
+                arUiOverlay.classList.add('hidden'); // Hide AR UI overlay
+                clearAllMeasurements(); // Clear measurements when AR session ends
+            });
 
-        // Create and append the ARButton to the body. This button handles AR session initiation.
-        document.body.appendChild(
-          ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] })
-        );
+            // Create and append the ARButton to the body. This button handles AR session initiation.
+            document.body.appendChild(
+                ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] })
+            );
 
-        // Add a hemisphere light to the scene for basic illumination
-        const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
-        scene.add(light);
+            // Add a hemisphere light to the scene for basic illumination
+            const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
+            scene.add(light);
 
-        // Reticle (the circle that shows where the AR content will be placed)
-        const reticleGeometry = new THREE.RingGeometry(0.05, 0.06, 32).rotateX(-Math.PI / 2);
-        const reticleMaterial = new THREE.MeshBasicMaterial({ color: 0xFFFFFF }); // White color for reticle
-        reticle = new THREE.Mesh(reticleGeometry, reticleMaterial);
-        reticle.matrixAutoUpdate = false; // Manual matrix updates for performance with AR
-        reticle.visible = false; // Hidden until a surface is detected
-        scene.add(reticle);
+            // Reticle (the circle that shows where the AR content will be placed)
+            const reticleGeometry = new THREE.RingGeometry(0.05, 0.06, 32).rotateX(-Math.PI / 2);
+            const reticleMaterial = new THREE.MeshBasicMaterial({ color: 0xFFFFFF }); // White color for reticle
+            reticle = new THREE.Mesh(reticleGeometry, reticleMaterial);
+            reticle.matrixAutoUpdate = false; // Manual matrix updates for performance with AR
+            reticle.visible = false; // Hidden until a surface is detected
+            scene.add(reticle);
 
-        // Add a small dot in the center of the reticle
-        const dotGeometry = new THREE.SphereGeometry(0.005, 16, 16); // Smaller sphere for the dot
-        const dotMaterial = new THREE.MeshBasicMaterial({ color: 0xFF0000 }); // Red color for the dot
-        const centerDot = new THREE.Mesh(dotGeometry, dotMaterial);
-        centerDot.position.set(0, 0, 0); // Position at the center of the reticle
-        reticle.add(centerDot); // Add the dot as a child of the reticle
+            // Add a small dot in the center of the reticle
+            const dotGeometry = new THREE.SphereGeometry(0.005, 16, 16); // Smaller sphere for the dot
+            const dotMaterial = new THREE.MeshBasicMaterial({ color: 0xFF0000 }); // Red color for the dot
+            const centerDot = new THREE.Mesh(dotGeometry, dotMaterial);
+            centerDot.position.set(0, 0, 0); // Position at the center of the reticle
+            reticle.add(centerDot); // Add the dot as a child of the reticle
 
-        // Event listener for placing points on tap
-        renderer.domElement.addEventListener('click', placePoint);
+            // Event listener for placing points on tap
+            renderer.domElement.addEventListener('click', placePoint);
 
-        // Event listeners for Undo and Clear All buttons
-        document.getElementById('undoButton').addEventListener('click', undoLastMeasurement);
-        document.getElementById('clearButton').addEventListener('click', clearAllMeasurements);
-
-        // Handle window resizing
-        window.addEventListener('resize', onWindowResize);
-      }
-
-      /**
-       * Handles window resizing to adjust renderer and camera aspect ratio.
-       */
-      function onWindowResize() {
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-      }
-
-      /**
-       * Creates a 3D text label (Sprite) from a given string.
-       * @param {string} text - The text content for the label.
-       * @returns {THREE.Sprite} The created Sprite object.
-       */
-      function createLabelSprite(text) {
-        const canvas = document.createElement('canvas');
-        const context = canvas.getContext('2d');
-        const fontSize = 60; // Increased font size for better readability
-        const padding = 20;
-
-        // Set font and measure text to determine canvas size
-        context.font = `${fontSize}px Arial`;
-        const textMetrics = context.measureText(text);
-        canvas.width = textMetrics.width + padding * 2;
-        canvas.height = fontSize + padding * 2;
-
-        // Redraw text on the sized canvas
-        context.font = `${fontSize}px Arial`;
-        context.fillStyle = 'white';
-        context.textAlign = 'center';
-        context.textBaseline = 'middle';
-        context.fillRect(0, 0, canvas.width, canvas.height); // Background for visibility
-        context.fillStyle = 'black'; // Text color
-        context.fillText(text, canvas.width / 2, canvas.height / 2);
-
-        const texture = new THREE.CanvasTexture(canvas);
-        texture.minFilter = THREE.LinearFilter; // Improve texture quality
-        texture.needsUpdate = true;
-
-        const material = new THREE.SpriteMaterial({ map: texture });
-        const sprite = new THREE.Sprite(material);
-
-        // Scale the sprite based on the canvas size to maintain aspect ratio and visibility
-        const aspectRatio = canvas.width / canvas.height;
-        const spriteHeight = 0.05; // Adjust this value to control label size in AR
-        sprite.scale.set(spriteHeight * aspectRatio, spriteHeight, 1);
-
-        return sprite;
-      }
-
-      /**
-       * Places a point in the AR scene when the screen is tapped.
-       * Also draws lines and distance labels if two or more points are placed.
-       */
-      function placePoint() {
-        if (reticle.visible) {
-          // Create a new point mesh
-          const point = new THREE.Mesh(pointGeometry, pointMaterial);
-          // Set its position to the reticle's current position
-          point.position.setFromMatrixPosition(reticle.matrix);
-          scene.add(point);
-          placedPoints.push(point);
-
-          // If there are at least two points, draw a line and a distance label
-          if (placedPoints.length >= 2) {
-            const p1 = placedPoints[placedPoints.length - 2].position;
-            const p2 = placedPoints[placedPoints.length - 1].position;
-
-            // Create a line between the last two points
-            const lineGeo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
-            const lineMat = new THREE.LineBasicMaterial({ color: 0xFF0000, linewidth: 3 }); // Red line
-            const line = new THREE.Line(lineGeo, lineMat);
-            scene.add(line);
-            placedLines.push(line);
-
-            // Calculate the distance and create a 3D label
-            const distance = p1.distanceTo(p2);
-            const labelText = `${distance.toFixed(2)} m`;
-            const label = createLabelSprite(labelText);
-
-            // Position the label at the midpoint of the line
-            const midpoint = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
-            label.position.copy(midpoint);
-            scene.add(label);
-            distanceLabels.push(label);
-
-            console.log(`Distance: ${distance.toFixed(2)} meters`);
-          }
-        }
-      }
-
-      /**
-       * Removes the last placed point, line, and distance label from the scene.
-       */
-      function undoLastMeasurement() {
-        // Remove the last label
-        if (distanceLabels.length > 0) {
-          const lastLabel = distanceLabels.pop();
-          scene.remove(lastLabel);
-          lastLabel.material.map.dispose(); // Dispose texture to free memory
-          lastLabel.material.dispose();
-        }
-
-        // Remove the last line
-        if (placedLines.length > 0) {
-          const lastLine = placedLines.pop();
-          scene.remove(lastLine);
-          lastLine.geometry.dispose(); // Dispose geometry and material
-          lastLine.material.dispose();
-        }
-
-        // Remove the last point
-        if (placedPoints.length > 0) {
-          const lastPoint = placedPoints.pop();
-          scene.remove(lastPoint);
-          lastPoint.geometry.dispose(); // Dispose geometry and material
-          lastPoint.material.dispose();
-        }
-      }
-
-      /**
-       * Clears all placed points, lines, and distance labels from the scene.
-       */
-      function clearAllMeasurements() {
-        // Remove all labels
-        distanceLabels.forEach(label => {
-          scene.remove(label);
-          label.material.map.dispose();
-          label.material.dispose();
-        });
-        distanceLabels.length = 0; // Clear the array
-
-        // Remove all lines
-        placedLines.forEach(line => {
-          scene.remove(line);
-          line.geometry.dispose();
-          line.material.dispose();
-        });
-        placedLines.length = 0; // Clear the array
-
-        // Remove all points
-        placedPoints.forEach(point => {
-          scene.remove(point);
-          point.geometry.dispose();
-          point.material.dispose();
-        });
-        placedPoints.length = 0; // Clear the array
-      }
-
-      /**
-       * The main animation loop for the AR scene.
-       * Handles hit testing and rendering.
-       */
-      function animate() {
-        renderer.setAnimationLoop((timestamp, frame) => {
-          if (frame) {
-            const referenceSpace = renderer.xr.getReferenceSpace();
-            const session = renderer.xr.getSession();
-
-            // Request hit test source if not already requested
-            if (!hitTestSourceRequested) {
-              session.requestReferenceSpace('viewer').then((refSpace) => {
-                session.requestHitTestSource({ space: refSpace }).then((source) => {
-                  hitTestSource = source;
+            // Event listeners for UI buttons
+            document.getElementById('undoButton').addEventListener('click', undoLastMeasurement);
+            document.getElementById('clearButton').addEventListener('click', clearAllMeasurements);
+            document.getElementById('triggerClickButton').addEventListener('click', () => {
+                // Simulate a click event on the renderer's canvas
+                const event = new MouseEvent('click', {
+                    clientX: window.innerWidth / 2,
+                    clientY: window.innerHeight / 2,
+                    bubbles: true,
+                    cancelable: true,
                 });
-              });
-              hitTestSourceRequested = true;
+                renderer.domElement.dispatchEvent(event);
+            });
+
+            // Handle window resizing
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        /**
+         * Handles window resizing to adjust renderer and camera aspect ratio.
+         */
+        function onWindowResize() {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        }
+
+        /**
+         * Creates a 3D text label (Sprite) from a given string.
+         * @param {string} text - The text content for the label.
+         * @returns {THREE.Sprite} The created Sprite object.
+         */
+        function createLabelSprite(text) {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            const fontSize = 60; // Increased font size for better readability
+            const padding = 20;
+
+            // Set font and measure text to determine canvas size
+            context.font = `${fontSize}px Arial`;
+            const textMetrics = context.measureText(text);
+            canvas.width = textMetrics.width + padding * 2;
+            canvas.height = fontSize + padding * 2;
+
+            // Redraw text on the sized canvas
+            context.font = `${fontSize}px Arial`;
+            context.fillStyle = 'white';
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.fillRect(0, 0, canvas.width, canvas.height); // Background for visibility
+            context.fillStyle = 'black'; // Text color
+            context.fillText(text, canvas.width / 2, canvas.height / 2);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.minFilter = THREE.LinearFilter; // Improve texture quality
+            texture.needsUpdate = true;
+
+            const material = new THREE.SpriteMaterial({ map: texture });
+            const sprite = new THREE.Sprite(material);
+
+            // Scale the sprite based on the canvas size to maintain aspect ratio and visibility
+            const aspectRatio = canvas.width / canvas.height;
+            const spriteHeight = 0.05; // Adjust this value to control label size in AR
+            sprite.scale.set(spriteHeight * aspectRatio, spriteHeight, 1);
+
+            return sprite;
+        }
+
+        /**
+         * Places a point in the AR scene when the screen is tapped.
+         * Also draws lines and distance labels if two or more points are placed.
+         */
+        function placePoint() {
+            if (reticle.visible) {
+                // Create a new point mesh
+                const point = new THREE.Mesh(pointGeometry, pointMaterial);
+                // Set its position to the reticle's current position
+                point.position.setFromMatrixPosition(reticle.matrix);
+                scene.add(point);
+                placedPoints.push(point);
+
+                // If there are at least two points, draw a line and a distance label
+                if (placedPoints.length >= 2) {
+                    const p1 = placedPoints[placedPoints.length - 2].position;
+                    const p2 = placedPoints[placedPoints.length - 1].position;
+
+                    // Create a line between the last two points
+                    const lineGeo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+                    const lineMat = new THREE.LineBasicMaterial({ color: 0xFF0000, linewidth: 3 }); // Red line
+                    const line = new THREE.Line(lineGeo, lineMat);
+                    scene.add(line);
+                    placedLines.push(line);
+
+                    // Calculate the distance and create a 3D label
+                    const distance = p1.distanceTo(p2);
+                    const labelText = `${distance.toFixed(2)} m`;
+                    const label = createLabelSprite(labelText);
+
+                    // Position the label at the midpoint of the line
+                    const midpoint = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
+                    label.position.copy(midpoint);
+                    scene.add(label);
+                    distanceLabels.push(label);
+
+                    console.log(`Distance: ${distance.toFixed(2)} meters`);
+                }
+            }
+        }
+
+        /**
+         * Removes the last placed point, line, and distance label from the scene.
+         */
+        function undoLastMeasurement() {
+            // Remove the last label
+            if (distanceLabels.length > 0) {
+                const lastLabel = distanceLabels.pop();
+                scene.remove(lastLabel);
+                lastLabel.material.map.dispose(); // Dispose texture to free memory
+                lastLabel.material.dispose();
             }
 
-            // Perform hit test and update reticle position
-            if (hitTestSource) {
-              const hitTestResults = frame.getHitTestResults(hitTestSource);
-              if (hitTestResults.length > 0) {
-                const hit = hitTestResults[0];
-                const pose = hit.getPose(referenceSpace);
-
-                reticle.visible = true;
-                reticle.matrix.fromArray(pose.transform.matrix);
-              } else {
-                reticle.visible = false; // Hide reticle if no surface is detected
-              }
+            // Remove the last line
+            if (placedLines.length > 0) {
+                const lastLine = placedLines.pop();
+                scene.remove(lastLine);
+                lastLine.geometry.dispose(); // Dispose geometry and material
+                lastLine.material.dispose();
             }
-          }
 
-          renderer.render(scene, camera); // Render the scene
-        });
-      }
+            // Remove the last point
+            if (placedPoints.length > 0) {
+                const lastPoint = placedPoints.pop();
+                scene.remove(lastPoint);
+                lastPoint.geometry.dispose(); // Dispose geometry and material
+                lastPoint.material.dispose();
+            }
+        }
+
+        /**
+         * Clears all placed points, lines, and distance labels from the scene.
+         */
+        function clearAllMeasurements() {
+            // Remove all labels
+            distanceLabels.forEach(label => {
+                scene.remove(label);
+                label.material.map.dispose();
+                label.material.dispose();
+            });
+            distanceLabels.length = 0; // Clear the array
+
+            // Remove all lines
+            placedLines.forEach(line => {
+                scene.remove(line);
+                line.geometry.dispose();
+                line.material.dispose();
+            });
+            placedLines.length = 0; // Clear the array
+
+            // Remove all points
+            placedPoints.forEach(point => {
+                scene.remove(point);
+                point.geometry.dispose();
+                point.material.dispose();
+            });
+            placedPoints.length = 0; // Clear the array
+        }
+
+        /**
+         * The main animation loop for the AR scene.
+         * Handles hit testing and rendering.
+         */
+        function animate() {
+            renderer.setAnimationLoop((timestamp, frame) => {
+                if (frame) {
+                    const referenceSpace = renderer.xr.getReferenceSpace();
+                    const session = renderer.xr.getSession();
+
+                    // Request hit test source if not already requested
+                    if (!hitTestSourceRequested) {
+                        session.requestReferenceSpace('viewer').then((refSpace) => {
+                            session.requestHitTestSource({ space: refSpace }).then((source) => {
+                                hitTestSource = source;
+                            });
+                        });
+                        hitTestSourceRequested = true;
+                    }
+
+                    // Perform hit test and update reticle position
+                    if (hitTestSource) {
+                        const hitTestResults = frame.getHitTestResults(hitTestSource);
+                        if (hitTestResults.length > 0) {
+                            const hit = hitTestResults[0];
+                            const pose = hit.getPose(referenceSpace);
+
+                            reticle.visible = true;
+                            reticle.matrix.fromArray(pose.transform.matrix);
+                        } else {
+                            reticle.visible = false; // Hide reticle if no surface is detected
+                        }
+                    }
+                }
+
+                renderer.render(scene, camera); // Render the scene
+            });
+        }
     </script>
-  </body>
+</body>
 </html>
