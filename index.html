@@ -174,10 +174,10 @@
             arClickButton = createARButton('Place', '+', placePoint, new THREE.Vector3(0, -0.15, -0.5));
 
             // Undo Button (using text 'U' for now, replace with icon later if needed)
-            arUndoButton = createARButton('Undo', 'U', undoLastMeasurement, new THREE.Vector3(-0.2, -0.15, -0.5));
+            arUndoButton = createARButton('Undo', '<-', undoLastMeasurement, new THREE.Vector3(-0.2, -0.15, -0.5));
 
             // Clear Button (using text 'C' for now, replace with icon later if needed)
-            arClearButton = createARButton('Clear', 'C', clearAllMeasurements, new THREE.Vector3(0.2, -0.15, -0.5));
+            arClearButton = createARButton('Clear', 'X', clearAllMeasurements, new THREE.Vector3(0.2, -0.15, -0.5));
         }
 
         function onPointerDownAR(event) {
