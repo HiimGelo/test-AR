@@ -248,10 +248,13 @@ function updateTilePreview() {
 
     if (placedPoints.length < 3) return;
 
-    // --- Create flat geometry in XZ plane ---
-    const vertices = placedPoints.map(p => new THREE.Vector3(p.position.x, 0, p.position.z));
+    // Compute average Y position for the surface
+    const avgY = placedPoints.reduce((sum, p) => sum + p.position.y, 0) / placedPoints.length;
 
-    // Triangulate the polygon (simple fan triangulation)
+    // Use X/Z from points, but keep the real Y height
+    const vertices = placedPoints.map(p => new THREE.Vector3(p.position.x, p.position.y, p.position.z));
+
+    // Triangulate the polygon
     const indices = [];
     for (let i = 1; i < vertices.length - 1; i++) {
         indices.push(0, i, i + 1);
@@ -262,8 +265,8 @@ function updateTilePreview() {
     const uvs = [];
 
     vertices.forEach(v => {
-        positions.push(v.x, 0, v.z);
-        uvs.push(v.x, v.z); // Use X/Z as UV basis
+        positions.push(v.x, v.y, v.z);
+        uvs.push(v.x, v.z);
     });
 
     geometry.setIndex(indices);
@@ -275,12 +278,10 @@ function updateTilePreview() {
     const texture = loader.load('https://raw.githubusercontent.com/HiimGelo/test-AR/main/TBGOJBE-02PE.jpg');
     texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
 
-    // Compute bounding box to estimate repetition
     const bbox = new THREE.Box3().setFromPoints(vertices);
     const size = new THREE.Vector3();
     bbox.getSize(size);
 
-    // Repeat pattern according to real tile size (1.2m × 0.2m)
     texture.repeat.set(size.x / 0.6, size.z / 0.6);
 
     const material = new THREE.MeshBasicMaterial({
@@ -289,7 +290,10 @@ function updateTilePreview() {
     });
 
     tileMesh = new THREE.Mesh(geometry, material);
-    tileMesh.position.y = placedPoints[0].position.y + 0.001; // Slight offset to avoid z-fighting
+
+    // Keep tile just slightly above the measured surface to avoid z-fighting
+    tileMesh.position.y = avgY + 0.001;
+
     scene.add(tileMesh);
 }
 
