@@ -273,7 +273,7 @@ function updateTilePreview() {
 
     // --- Load tile texture ---
     const loader = new THREE.TextureLoader();
-    const texture = loader.load('TBGOJBE-02PE.jpg');
+    const texture = loader.load('https://github.com/HiimGelo/test-AR/blob/main/TBGOJBE-02PE.jpg');
     texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
 
     // Compute bounding box to estimate repetition
@@ -282,7 +282,7 @@ function updateTilePreview() {
     bbox.getSize(size);
 
     // Repeat pattern according to real tile size (1.2m × 0.2m)
-    texture.repeat.set(size.x / 1.2, size.z / 0.2);
+    texture.repeat.set(size.x / 0.6, size.z / 0.6);
 
     const material = new THREE.MeshBasicMaterial({
         map: texture,
