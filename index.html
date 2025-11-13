@@ -216,28 +216,39 @@ function createLabelSprite(text) {
 
     context.font = `${fontSize}px Arial`;
     context.fillStyle = 'white';
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.fillStyle = 'black';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
     context.fillText(text, canvas.width / 2, canvas.height / 2);
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.minFilter = THREE.LinearFilter;
     texture.needsUpdate = true;
 
-    const material = new THREE.SpriteMaterial({ map: texture });
-    const sprite = new THREE.Sprite(material);
+    const material = new THREE.SpriteMaterial({
+        map: texture,
+        depthTest: false,   // ✅ ensures always visible
+        depthWrite: false,  // ✅ prevents affecting depth buffer
+        transparent: true
+    });
 
+    const sprite = new THREE.Sprite(material);
     const aspectRatio = canvas.width / canvas.height;
-    const spriteHeight = 0.05;
+    const spriteHeight = 0.06;
     sprite.scale.set(spriteHeight * aspectRatio, spriteHeight, 1);
+
+    // ✅ Force sprite to always face the camera
+    sprite.onBeforeRender = function(renderer, scene, camera) {
+        sprite.quaternion.copy(camera.quaternion);
+    };
 
     return sprite;
 }
 
 // ---------------- TILE PREVIEW FUNCTION ----------------
 function updateTilePreview() {
+    // Clean up old preview
     if (tileMesh) {
         scene.remove(tileMesh);
         tileMesh.geometry.dispose();
@@ -245,18 +256,35 @@ function updateTilePreview() {
         tileMesh.material.dispose();
         tileMesh = null;
     }
-
     if (placedPoints.length < 3) return;
 
-    // Compute average Y position for the surface
-    const avgY = placedPoints.reduce((sum, p) => sum + p.position.y, 0) / placedPoints.length;
+    // --- Define base plane from first 3 points ---
+    const p0 = placedPoints[0].position.clone();
+    const p1 = placedPoints[1].position.clone();
+    const p2 = placedPoints[2].position.clone();
 
-    // Use X/Z from points, but keep the real Y height
-    const vertices = placedPoints.map(p => new THREE.Vector3(p.position.x, p.position.y, p.position.z));
+    const v1 = new THREE.Vector3().subVectors(p1, p0);
+    const v2 = new THREE.Vector3().subVectors(p2, p0);
+    const normal = new THREE.Vector3().crossVectors(v1, v2).normalize();
 
-    // Triangulate the polygon
+    // --- Define local coordinate frame ---
+    const xAxis = v1.clone().normalize();                   // X: first edge
+    const zAxis = normal.clone().normalize();               // Z: plane normal
+    const yAxis = new THREE.Vector3().crossVectors(zAxis, xAxis).normalize(); // Y: perpendicular to both
+
+    // Build local transform matrix (to convert world → local)
+    const basis = new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis);
+    const inverseBasis = new THREE.Matrix4().copy(basis).invert();
+
+    // Convert all world points to local space (flattened)
+    const localPoints = placedPoints.map(p => {
+        const local = p.position.clone().sub(p0).applyMatrix4(inverseBasis);
+        return local;
+    });
+
+    // Triangulate
     const indices = [];
-    for (let i = 1; i < vertices.length - 1; i++) {
+    for (let i = 1; i < localPoints.length - 1; i++) {
         indices.push(0, i, i + 1);
     }
 
@@ -264,35 +292,40 @@ function updateTilePreview() {
     const positions = [];
     const uvs = [];
 
-    vertices.forEach(v => {
-        positions.push(v.x, v.y, v.z);
-        uvs.push(v.x, v.z);
-    });
+    localPoints.forEach(v => {
+    positions.push(v.x, v.y, v.z);
+    // Use local X and Y coordinates for UV mapping (surface axes)
+    uvs.push(v.x, v.y);
+});
 
     geometry.setIndex(indices);
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
     geometry.computeVertexNormals();
 
+    // --- Load texture ---
     const loader = new THREE.TextureLoader();
     const texture = loader.load('https://raw.githubusercontent.com/HiimGelo/test-AR/main/TBGOJBE-02PE.jpg');
     texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
 
-    const bbox = new THREE.Box3().setFromPoints(vertices);
+    const bbox = new THREE.Box3().setFromPoints(localPoints);
     const size = new THREE.Vector3();
     bbox.getSize(size);
-
-    texture.repeat.set(size.x / 0.6, size.z / 0.6);
+    texture.repeat.set(size.x / 0.6, size.y / 0.6);
 
     const material = new THREE.MeshBasicMaterial({
         map: texture,
         side: THREE.DoubleSide
     });
 
+    // --- Create mesh ---
     tileMesh = new THREE.Mesh(geometry, material);
 
-    // Keep tile just slightly above the measured surface to avoid z-fighting
-    tileMesh.position.y = avgY + 0.001;
+    // Align local axes to the world plane
+    tileMesh.setRotationFromMatrix(basis);
+
+    // Position at first point and lift slightly
+    tileMesh.position.copy(p0).addScaledVector(normal, 0.001);
 
     scene.add(tileMesh);
 }
@@ -319,7 +352,10 @@ function placePoint() {
             const label = createLabelSprite(labelText);
 
             const midpoint = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
-            label.position.copy(midpoint);
+
+            // lift label slightly upward (relative to world up)
+            label.position.copy(midpoint).add(new THREE.Vector3(0, 0.05, 0));
+
             scene.add(label);
             distanceLabels.push(label);
         }
