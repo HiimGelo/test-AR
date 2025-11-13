@@ -271,7 +271,6 @@ function updateTilePreview() {
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
     geometry.computeVertexNormals();
 
-    // --- Load tile texture ---
     const loader = new THREE.TextureLoader();
     const texture = loader.load('https://raw.githubusercontent.com/HiimGelo/test-AR/main/TBGOJBE-02PE.jpg');
     texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
